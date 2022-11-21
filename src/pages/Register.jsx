@@ -1,26 +1,56 @@
+import { useState } from "react";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { doc, setDoc } from "firebase/firestore";
+import { auth, storage, db } from "../firebase";
 import Add from "../assets/addAvatar.png";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../firebase";
+import { useNavigate } from "react-router-dom";
 
 const Register = () => {
-  const handleSumbit = (e) => {
+  const [error, setError] = useState(false);
+  const navigate = useNavigate();
+
+  const handleSumbit = async (e) => {
     e.preventDefault();
     const displayName = e.target[0].value;
     const email = e.target[1].value;
     const password = e.target[2].value;
     const file = e.target[3].files[0];
 
-    createUserWithEmailAndPassword(auth, email, password)
-      .then((userCredential) => {
-        // Signed in
-        const user = userCredential.user;
-        // ...
-      })
-      .catch((error) => {
-        const errorCode = error.code;
-        const errorMessage = error.message;
-        // ..
+    try {
+      const res = await createUserWithEmailAndPassword(auth, email, password);
+
+      //Create a unique image name
+      const date = new Date().getTime();
+      const storageRef = ref(storage, `${displayName + date}`);
+
+      await uploadBytesResumable(storageRef, file).then(() => {
+        getDownloadURL(storageRef).then(async (downloadURL) => {
+          try {
+            await updateProfile(res.user, {
+              displayName,
+              photoURL: downloadURL,
+            });
+
+            await setDoc(doc(db, "users", res.user.uid), {
+              uid: res.user.uid,
+              displayName,
+              email,
+              photoURL: downloadURL,
+            });
+
+            await setDoc(doc(db, "userChats", res.user.uid), {});
+            navigate("/");
+          } catch (err) {
+            console.log(err);
+            setError(true);
+          }
+        });
       });
+    } catch (err) {
+      console.log(err);
+      setError(true);
+    }
   };
 
   return (
@@ -38,6 +68,7 @@ const Register = () => {
             <input id="file-input" type="file" />
           </label>
           <button>Sign up</button>
+          {error && <span>Something went wrong</span>}
         </form>
         <p>You have an account? Login</p>
       </div>
